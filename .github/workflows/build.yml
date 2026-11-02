@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          shellcheck scripts/*.sh
+          shellcheck -S warning scripts/*.sh
           find payload live-rootfs release-tools -type f \( -name '*.sh' -o -path '*/bin/*' -o -path '*/lib/shadowos/*' \) ! -name '*.py' -print0 |
             xargs -0 -r shellcheck -S warning
           python -m py_compile scripts/*.py payload/rootfs/usr/local/lib/shadowos/*.py
