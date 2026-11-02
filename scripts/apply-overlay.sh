@@ -98,7 +98,15 @@ sed -i \
     -e 's/^iso_label=.*/iso_label="SHADOW_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"/' \
     -e 's|^iso_publisher=.*|iso_publisher="ShadowOS community build (based on CachyOS)"|' \
     -e 's|^iso_application=.*|iso_application="ShadowOS Live/Installer"|' \
+    -e "s|^airootfs_image_tool_options=.*|airootfs_image_tool_options=('-comp' 'zstd' '-Xcompression-level' '15' '-b' '1M')|" \
     "$destination/archiso/profiledef.sh"
+
+# CachyOS' wrapper still hard-codes its original mkarchiso output name in two
+# places. Keep its checksum/signing flow, but make both names match ShadowOS.
+sed -i \
+    -e 's|cachyos-$(date --date=|shadowos-$(date --date=|' \
+    -e 's|vars+=("cachyos")|vars+=("shadowos")|' \
+    "$destination/util-iso.sh"
 
 sed -i \
     -e 's/Welcome to CachyOS/Welcome to ShadowOS/' \

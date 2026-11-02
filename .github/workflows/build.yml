@@ -75,8 +75,18 @@ jobs:
         shell: bash
         working-directory: ${{ runner.temp }}/cachyos-live-iso
         run: |
-          set -euxo pipefail
+          set -uxo pipefail
+          set +e
           sudo -H -E -u builder ./buildiso.sh -p desktop -v -w
+          rc=$?
+          set -e
+          if (( rc != 0 )); then
+            iso="$(find out/desktop -maxdepth 1 -type f -name '*.iso' -print -quit 2>/dev/null || true)"
+            if [[ -z "$iso" ]]; then
+              exit "$rc"
+            fi
+            echo "::warning::The CachyOS wrapper returned $rc after creating $iso; strict ISO validation will continue."
+          fi
 
       - name: Validate ISO structure
         id: meta
