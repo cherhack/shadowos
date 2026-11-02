@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ $# -ne 1 || ! "$1" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "usage: install-target USER" >&2
+    exit 2
+fi
+
+target_user="$1"
+getent passwd "$target_user" >/dev/null
+
+/usr/local/lib/shadowos/deploy-user "$target_user"
+
+for group in gamemode realtime video input; do
+    if getent group "$group" >/dev/null; then
+        usermod -aG "$group" "$target_user"
+    fi
+done
+
+systemctl enable NetworkManager.service fstrim.timer sddm.service shadowos-firstboot.service
+systemctl enable bluetooth.service power-profiles-daemon.service 2>/dev/null || true
+systemctl set-default graphical.target
+
+set_grub_value() {
+    local key="$1" value="$2" file=/etc/default/grub
+    touch "$file"
+    if grep -qE "^${key}=" "$file"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
+    fi
+}
+
+if command -v grub-mkconfig >/dev/null 2>&1; then
+    set_grub_value GRUB_DEFAULT 0
+    set_grub_value GRUB_SAVEDEFAULT false
+    set_grub_value GRUB_TIMEOUT 5
+    set_grub_value GRUB_TIMEOUT_STYLE menu
+    set_grub_value GRUB_DISTRIBUTOR '"ShadowOS"'
+    set_grub_value GRUB_DISABLE_SUBMENU y
+    set_grub_value GRUB_DISABLE_RECOVERY true
+    set_grub_value GRUB_DISABLE_OS_PROBER false
+    set_grub_value GRUB_THEME '"/usr/share/grub/themes/shadowos/theme.txt"'
+    # Keep the top-level menu minimal: ShadowOS and an os-prober Windows entry.
+    # Firmware setup and snapshot tools remain available from Linux/UEFI itself.
+    for extra in /etc/grub.d/20_memtest86+ /etc/grub.d/30_uefi-firmware /etc/grub.d/41_snapshots-btrfs; do
+        [[ -e "$extra" ]] && chmod -x "$extra"
+    done
+    if [[ -d /boot/grub ]]; then
+        grub-mkconfig -o /boot/grub/grub.cfg || echo "GRUB menu regeneration will be retried after first boot" >&2
+    fi
+fi
+
+# Bottles is distributed by Flathub. Installing here gives Calamares visible
+# progress; the first-boot service retries when Flathub is temporarily offline.
+if command -v flatpak >/dev/null 2>&1; then
+    flatpak remote-add --system --if-not-exists flathub \
+        https://flathub.org/repo/flathub.flatpakrepo || true
+    timeout 15m flatpak install --system --noninteractive -y flathub \
+        com.usebottles.bottles || true
+fi
+
+mkdir -p /var/lib/shadowos
+printf '%s\n' "$(date -u +%FT%TZ)" > /var/lib/shadowos/installed-at

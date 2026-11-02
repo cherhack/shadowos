@@ -1,0 +1,48 @@
+{
+  "widgets": {
+    "weather": {"enabled": false},
+    "media": {"enabled": false},
+    "resources": {"enabled": true},
+    "usercard": {"enabled": false},
+    "calendar": {"enabled": false},
+    "visualizer": {"enabled": false},
+    "battery": {"enabled": false},
+    "todo": {"enabled": false},
+    "focus": {"enabled": false},
+    "notes": {"enabled": false}
+  },
+  "clock": {
+    "enabled": true,
+    "onlyLocked": false,
+    "placement": "leastBusy",
+    "style": "digital",
+    "font": "default"
+  },
+  "dock": {
+    "enabled": true,
+    "position": "bottom",
+    "background": true,
+    "hover": true,
+    "pinnedStartup": false,
+    "media": true,
+    "nowText": false,
+    "pinButton": true,
+    "appsButton": true,
+    "tint": false,
+    "opacity": 0.82,
+    "blur": true,
+    "apps": [
+      "kitty",
+      "org.gnome.Nautilus",
+      "firefox",
+      "steam",
+      "com.usebottles.bottles"
+    ]
+  },
+  "lock": {"toolbars": false, "widgets": false, "media": false},
+  "widgetBlur": true,
+  "widgetTheme": "shadow",
+  "widgetAdapt": true,
+  "autoHide": true,
+  "editing": false
+}

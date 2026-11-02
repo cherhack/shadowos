@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+notify() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -a ShadowOS "$1" "$2" || true
+    fi
+}
+
+fail() {
+    notify "Windows application" "$1"
+    if command -v zenity >/dev/null 2>&1 && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+        zenity --error --title="ShadowOS Windows runner" --text="$1" || true
+    else
+        echo "$1" >&2
+    fi
+    exit 1
+}
+
+[[ $# -ge 1 ]] || fail "No EXE or MSI file was supplied."
+command -v wine >/dev/null 2>&1 || fail "Wine is not installed."
+
+raw="$1"
+if [[ "$raw" == file://* ]]; then
+    raw="$(python3 - "$raw" <<'PY'
+import sys
+from urllib.parse import unquote, urlparse
+print(unquote(urlparse(sys.argv[1]).path))
+PY
+)"
+fi
+
+exe="$(realpath "$raw")"
+[[ -f "$exe" ]] || fail "File not found: $raw"
+
+case "${exe,,}" in
+    *.exe|*.msi) ;;
+    *) fail "Only EXE and MSI files are supported." ;;
+esac
+
+state="$HOME/.local/state/shadowos-exe"
+mkdir -p "$state/approved" "$state/logs"
+file_hash="$(sha256sum "$exe" | awk '{print $1}')"
+approval="$state/approved/$file_hash"
+
+if [[ ! -f "$approval" ]]; then
+    message="Windows programs can contain malware just like Linux programs.\n\nFile:\n$exe\n\nSHA-256:\n$file_hash\n\nRun it in a separate Wine prefix?"
+    if command -v zenity >/dev/null 2>&1 && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+        zenity --question --width=620 --title="Run Windows application?" \
+            --ok-label="Run in isolated prefix" --cancel-label="Cancel" --text="$message" || exit 0
+    elif [[ -t 0 ]]; then
+        printf '%s\nType RUN to continue: ' "$message"
+        read -r answer
+        [[ "$answer" == RUN ]] || exit 0
+    else
+        fail "Approval is required before this file can run."
+    fi
+    printf '%s\n%s\n' "$exe" "$file_hash" > "$approval"
+    chmod 600 "$approval"
+fi
+
+parent="$(dirname "$exe")"
+stem="$(basename "${exe%.*}")"
+safe_stem="$(tr -cs '[:alnum:]_.-' '_' <<<"$stem" | sed 's/^_*//;s/_*$//' | cut -c1-40)"
+prefix_hash="$(printf '%s\0%s' "$parent" "$stem" | sha256sum | cut -c1-12)"
+prefix="$HOME/Games/ShadowOS-Prefixes/${safe_stem:-app}-$prefix_hash"
+mkdir -p "$prefix"
+log="$state/logs/${safe_stem:-app}-$prefix_hash.log"
+
+runner=(wine)
+lower_name="${stem,,}"
+if command -v gamemoderun >/dev/null 2>&1 && [[ ! "$lower_name" =~ (setup|install|unins|update|patch) ]]; then
+    runner=(gamemoderun wine)
+fi
+
+notify "Starting $(basename "$exe")" "Wine prefix: $prefix"
+(
+    export WINEPREFIX="$prefix"
+    export WINEARCH=win64
+    export WINEDEBUG=-all
+    if [[ ! -f "$prefix/system.reg" ]]; then
+        wineboot -u
+    fi
+    if [[ "${exe,,}" == *.msi ]]; then
+        "${runner[@]}" msiexec /i "$exe"
+    else
+        "${runner[@]}" start /unix "$exe"
+    fi
+) >>"$log" 2>&1 &
+disown

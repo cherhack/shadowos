@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -u
+
+state=/var/lib/shadowos
+mkdir -p "$state"
+
+if ! command -v flatpak >/dev/null 2>&1; then
+    echo "flatpak is not installed; Bottles setup will be retried next boot" >&2
+    exit 0
+fi
+
+flatpak remote-add --system --if-not-exists flathub \
+    https://flathub.org/repo/flathub.flatpakrepo || exit 0
+
+if ! flatpak info --system com.usebottles.bottles >/dev/null 2>&1; then
+    timeout 15m flatpak install --system --noninteractive -y flathub com.usebottles.bottles || exit 0
+fi
+
+date -u +%FT%TZ > "$state/firstboot.done"
+exit 0

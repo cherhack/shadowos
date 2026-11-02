@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ $# -ne 1 || ! "$1" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "usage: deploy-user USER" >&2
+    exit 2
+fi
+
+name="$1"
+entry="$(getent passwd "$name")"
+uid="$(cut -d: -f3 <<<"$entry")"
+gid="$(cut -d: -f4 <<<"$entry")"
+home="$(cut -d: -f6 <<<"$entry")"
+repo=/opt/shadowos/DarkShadowShell
+defaults=/usr/share/shadowos/defaults
+marker="$home/.config/shadowos/deployed-version"
+
+[[ -d "$repo/config" && -d "$repo/quickshell" ]] || {
+    echo "DarkShadowShell payload is missing" >&2
+    exit 1
+}
+
+if [[ -f "$marker" ]] && grep -qx '1.0.0-beta.1' "$marker"; then
+    exit 0
+fi
+
+install -d -m 0755 -o "$uid" -g "$gid" "$home" "$home/.config" "$home/.local/bin"
+install -d -m 0755 -o "$uid" -g "$gid" "$home/.local/share" "$home/Pictures/Wallpapers"
+
+copy_tree() {
+    local source="$1" destination="$2"
+    [[ -d "$source" ]] || return 0
+    mkdir -p "$destination"
+    cp -a "$source/." "$destination/"
+}
+
+copy_tree "$repo/config" "$home/.config"
+copy_tree "$repo/quickshell" "$home/.config/quickshell"
+copy_tree "$repo/bin" "$home/.local/bin"
+copy_tree "$repo/sounds" "$home/.local/share/rice/sounds"
+copy_tree "$repo/wallpapers" "$home/Pictures/Wallpapers"
+
+mkdir -p "$home/.config/hypr" "$home/.config/rice" "$home/.config/waybar"
+cp -a "$repo/lua/." "$home/.config/hypr/"
+[[ -f "$repo/assets/icon.png" ]] && install -Dm0644 "$repo/assets/icon.png" "$home/.local/share/rice/icon.png"
+
+# Apply the upstream author's saved settings first, then ShadowOS' lighter
+# defaults (dock enabled, heavy audio visualizer disabled).
+if [[ -d "$repo/settings/rice" ]]; then
+    cp -a "$repo/settings/rice/." "$home/.config/rice/"
+fi
+if [[ -f "$repo/settings/waybar/ui.json" ]]; then
+    cp -a "$repo/settings/waybar/ui.json" "$home/.config/waybar/ui.json"
+fi
+copy_tree "$defaults/rice" "$home/.config/rice"
+[[ -f "$defaults/waybar-ui.json" ]] && cp "$defaults/waybar-ui.json" "$home/.config/waybar/ui.json"
+
+printf '%s\n' "$repo" > "$home/.config/rice/repo"
+tr -d ' \r\n' < "$repo/VERSION" > "$home/.config/rice/version"
+printf '%s\n' "$home/Pictures/Wallpapers/mono-peaks.jpg" > "$home/.cache-hyprquickpaper-current.tmp"
+mkdir -p "$home/.cache"
+mv "$home/.cache-hyprquickpaper-current.tmp" "$home/.cache/hyprquickpaper-current"
+
+# Replace repository placeholders only in text files.
+while IFS= read -r -d '' file; do
+    if grep -Iq . "$file" 2>/dev/null; then
+        sed -i -e "s|@HOME@|$home|g" -e "s|@USER@|$name|g" "$file"
+    fi
+done < <(find "$home/.config" "$home/.local/bin" -type f -print0)
+
+hypr="$home/.config/hypr/hyprland.lua"
+if [[ -f "$hypr" ]] && ! grep -q 'ShadowOS hybrid AI' "$hypr"; then
+    python3 - "$hypr" <<'PY'
+from pathlib import Path
+import sys
+
+p = Path(sys.argv[1])
+s = p.read_text()
+line = '\n-- ShadowOS hybrid AI (safe, allow-listed actions only)\nhl.bind("SUPER + Space", hl.dsp.exec_cmd("kitty --class shadow-ai -e shadow-ai"))\n\n'
+marker = '-- must stay last: gaming mode and "no blur & transparency" override'
+if marker in s:
+    s = s.replace(marker, line + marker, 1)
+else:
+    s += line
+p.write_text(s)
+PY
+fi
+
+# Prefer the monitor's advertised mode and use the installed Rofi launcher.
+# This avoids assuming that every display supports 1920x1080 at 144 Hz.
+if [[ -f "$hypr" ]]; then
+    sed -i \
+        -e 's/mode     = "1920x1080@144hz"/mode     = "preferred"/' \
+        -e 's/local menu        = "hyprlauncher"/local menu        = "rofi -show drun"/' \
+        -e 's/{ colors = {"rgba(33ccffee)", "rgba(00ff99ee)"}, angle = 45 }/{ colors = {"rgba(b8b8b8ee)", "rgba(666666ee)"}, angle = 45 }/' \
+        "$hypr"
+fi
+
+cat >> "$home/.profile" <<'EOF'
+
+# ShadowOS user tools
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+EOF
+
+mkdir -p "$home/.config/shadowos"
+printf '%s\n' '1.0.0-beta.1' > "$marker"
+
+chown -R "$uid:$gid" "$home"
+
+runuser -u "$name" -- env HOME="$home" XDG_CONFIG_HOME="$home/.config" \
+    xdg-mime default shadowos-exe.desktop application/x-ms-dos-executable 2>/dev/null || true
+runuser -u "$name" -- env HOME="$home" XDG_CONFIG_HOME="$home/.config" \
+    xdg-mime default shadowos-exe.desktop application/x-msdownload 2>/dev/null || true
+
+# Generate the derived CSS/Lua files the upstream interactive installer would
+# normally create. Each helper is best-effort because no graphical session is
+# running yet during Calamares installation.
+for command in \
+    "desktop-set state" \
+    "desktop-set dock-blur" \
+    "waybar-set reapply" \
+    "rice-notify apply" \
+    "rice-rofi apply" \
+    "rice-lock apply" \
+    "rice-colors mode grey" \
+    "rice-effects apply --no-reload"; do
+    read -r -a argv <<<"$command"
+    tool="$home/.local/bin/${argv[0]}"
+    if [[ -x "$tool" ]]; then
+        argv[0]="$tool"
+        runuser -u "$name" -- env HOME="$home" USER="$name" PATH="$home/.local/bin:/usr/local/bin:/usr/bin" \
+            "${argv[@]}" >/dev/null 2>&1 || true
+    fi
+done
+
+chown -R "$uid:$gid" "$home"

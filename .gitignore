@@ -1,0 +1,8 @@
+out/
+build/
+release/
+*.iso
+*.iso.part-*
+*.log
+__pycache__/
+*.pyc

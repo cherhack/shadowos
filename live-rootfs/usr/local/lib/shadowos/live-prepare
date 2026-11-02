@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+getent passwd liveuser >/dev/null
+mkdir -p /home/liveuser
+chown 1000:1000 /home/liveuser
+/usr/local/lib/shadowos/deploy-user liveuser
+chown -R 1000:1000 /home/liveuser

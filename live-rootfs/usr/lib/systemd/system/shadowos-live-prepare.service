@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare the ShadowOS live desktop
+After=local-fs.target systemd-user-sessions.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/shadowos/live-prepare
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

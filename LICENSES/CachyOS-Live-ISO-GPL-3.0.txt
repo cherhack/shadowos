@@ -1,0 +1,9 @@
+ShadowOS uses and modifies CachyOS-Live-ISO, licensed under GPL-3.0.
+
+Upstream project: https://github.com/CachyOS/CachyOS-Live-ISO
+Pinned commit: 3215497d2e8c5fea90e185affcf973dfa2cf790b
+
+The full GPL-3.0 license text is available at:
+https://www.gnu.org/licenses/gpl-3.0.txt
+
+Source for this derivative build is included in the ShadowOS build repository.

@@ -1,0 +1,13 @@
+[Unit]
+Description=Finish optional ShadowOS application setup
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/var/lib/shadowos/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/shadowos/firstboot
+TimeoutStartSec=20min
+
+[Install]
+WantedBy=multi-user.target

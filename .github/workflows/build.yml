@@ -1,0 +1,150 @@
+name: Build ShadowOS ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish split ISO files as a GitHub pre-release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: shadowos-iso-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and smoke-test ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    container:
+      image: archlinux:base-devel
+      options: --privileged
+
+    steps:
+      - name: Check out ShadowOS build files
+        uses: actions/checkout@v4
+
+      - name: Configure CachyOS and Arch repositories
+        shell: bash
+        run: |
+          set -euxo pipefail
+          pacman-key --init
+          pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
+          pacman-key --lsign-key F3B607488DB35A47
+          sed -i '/^\[core\]$/i[cachyos]\nServer = https://mirror.cachyos.org/repo/$arch/$repo\n' /etc/pacman.conf
+          sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' /etc/pacman.conf
+          pacman -Syu --noconfirm --needed \
+            sudo git archiso cachyos-keyring mkinitcpio-archiso squashfs-tools \
+            grub xorriso qemu-desktop shellcheck python python-yaml rsync zstd \
+            cachyos-calamares-next
+
+      - name: Prepare pinned CachyOS source and ShadowOS overlay
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/*.sh
+          scripts/apply-overlay.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/cachyos-live-iso"
+
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euxo pipefail
+          shellcheck scripts/*.sh
+          find payload live-rootfs release-tools -type f \( -name '*.sh' -o -path '*/bin/*' -o -path '*/lib/shadowos/*' \) ! -name '*.py' -print0 |
+            xargs -0 -r shellcheck -S warning
+          python -m py_compile scripts/*.py payload/rootfs/usr/local/lib/shadowos/*.py
+          python scripts/test-shadow-ai.py payload/rootfs/usr/local/lib/shadowos/shadow_ai.py
+          python scripts/validate-overlay.py "$RUNNER_TEMP/cachyos-live-iso/archiso/airootfs"
+
+      - name: Create unprivileged build user
+        shell: bash
+        run: |
+          set -euxo pipefail
+          useradd builder -m
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          chmod -R a+rwX "$RUNNER_TEMP/cachyos-live-iso"
+
+      - name: Build ShadowOS ISO
+        shell: bash
+        working-directory: ${{ runner.temp }}/cachyos-live-iso
+        run: |
+          set -euxo pipefail
+          sudo -H -E -u builder ./buildiso.sh -p desktop -v -w
+
+      - name: Validate ISO structure
+        id: meta
+        shell: bash
+        run: |
+          set -euxo pipefail
+          iso="$(find "$RUNNER_TEMP/cachyos-live-iso/out/desktop" -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "$iso"
+          test "$(stat -c %s "$iso")" -gt 1000000000
+          xorriso -indev "$iso" -report_el_torito plain
+          xorriso -indev "$iso" -find / -name 'vmlinuz-linux-cachyos*' -print | grep -q vmlinuz
+          version="$(tr -d '\r\n ' < VERSION)"
+          echo "iso=$iso" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c %s "$iso")" >> "$GITHUB_OUTPUT"
+          sha256sum "$iso"
+
+      - name: BIOS boot smoke test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          scripts/smoke-test.sh "${{ steps.meta.outputs.iso }}" "$RUNNER_TEMP/qemu-serial.log"
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          iso="${{ steps.meta.outputs.iso }}"
+          mkdir -p release
+          cp release-tools/join-shadowos.ps1 release/
+          cp release-tools/join-shadowos.sh release/
+          chmod +x release/join-shadowos.sh
+          base="$(basename "$iso")"
+          (cd "$(dirname "$iso")" && sha256sum "$base") > release/SHA256SUMS
+          split -b 1900M -d -a 2 "$iso" "release/${base}.part-"
+          sha256sum release/${base}.part-* > release/PARTS-SHA256SUMS
+          {
+            echo "ShadowOS version: ${{ steps.meta.outputs.version }}"
+            echo "ISO bytes: ${{ steps.meta.outputs.bytes }}"
+            echo "CachyOS-Live-ISO: 3215497d2e8c5fea90e185affcf973dfa2cf790b"
+            echo "DarkShadowShell: ba082f2e206ce798cd1b415cfed33d10363ff37a"
+            echo "GitHub run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > release/BUILD-METADATA.txt
+
+      - name: Publish ISO pre-release
+        if: ${{ inputs.publish_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: shadowos-v${{ steps.meta.outputs.version }}-build.${{ github.run_number }}
+          name: ShadowOS ${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            Unofficial ShadowOS installer based on CachyOS.
+
+            Download every `*.iso.part-*` file plus the join script for your OS. Reassemble the ISO, then verify it against `SHA256SUMS` before writing it to a USB drive.
+
+            This is a pre-release. Back up Windows and verify the target disk model and serial number in the installer.
+          files: |
+            release/*
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadowos-build-diagnostics-${{ github.run_number }}
+          path: |
+            release/SHA256SUMS
+            release/PARTS-SHA256SUMS
+            release/BUILD-METADATA.txt
+            ${{ runner.temp }}/qemu-serial.log
+          if-no-files-found: ignore
+          retention-days: 14

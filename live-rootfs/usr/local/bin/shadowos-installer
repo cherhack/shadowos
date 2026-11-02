@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export TEXTDOMAIN=shadowos
+log=/home/liveuser/shadowos-install.log
+protected=()
+declare -A protected_seen=()
+
+dialog_error() {
+    zenity --error --width=650 --title="ShadowOS Installer" --text="$1" || true
+}
+
+dialog_info() {
+    zenity --info --width=680 --title="ShadowOS Installer" --text="$1" || true
+}
+
+if [[ "$(id -u)" -eq 0 ]]; then
+    dialog_error "Запускай установщик из меню обычного пользователя liveuser, а не от root."
+    exit 1
+fi
+
+if ! nm-online -q --timeout=20; then
+    dialog_error "Для онлайн-установки ShadowOS нужно подключение к интернету. Подключись к сети и запусти установщик снова."
+    exit 1
+fi
+
+mapfile -t windows_partitions < <(
+    sudo os-prober 2>/dev/null | awk -F: 'tolower($0) ~ /windows/ {print $1}' | sort -u
+)
+
+for partition in "${windows_partitions[@]}"; do
+    parent="$(lsblk -ndo PKNAME "$partition" 2>/dev/null | head -n1)"
+    [[ -n "$parent" ]] || continue
+    disk="/dev/$parent"
+    if [[ -z "${protected_seen[$disk]+present}" ]]; then
+        protected+=("$disk")
+        protected_seen["$disk"]=1
+    fi
+done
+
+if ((${#protected[@]})); then
+    details=""
+    for disk in "${protected[@]}"; do
+        line="$(lsblk -dn -o PATH,SIZE,MODEL,SERIAL "$disk" | sed 's/[[:space:]]\+/ /g')"
+        details+="$line\n"
+    done
+    if ! zenity --question --width=720 --title="Защита Windows" \
+        --ok-label="Защитить и продолжить" --cancel-label="Отмена" \
+        --text="Обнаружена Windows на диске(ах):\n\n$details\nЭти диски будут переведены в режим только чтения до перезагрузки. Установить ShadowOS на них будет невозможно. Продолжить?"; then
+        exit 0
+    fi
+    for disk in "${protected[@]}"; do
+        sudo blockdev --setro "$disk"
+        [[ "$(sudo blockdev --getro "$disk")" == 1 ]] || {
+            dialog_error "Не удалось защитить диск Windows: $disk"
+            exit 1
+        }
+    done
+else
+    if ! zenity --question --width=720 --title="Windows не обнаружена" \
+        --ok-label="Я проверю диск вручную" --cancel-label="Отмена" \
+        --text="Автоматическое обнаружение Windows не нашло её загрузчик. Это не означает, что диска Windows нет.\n\nПеред форматированием обязательно сверь модель, серийный номер и размер целевого NVMe. Самый надёжный вариант — временно отключить диск Windows. Продолжить?"; then
+        exit 0
+    fi
+fi
+
+candidates="$(lsblk -dn -o PATH,SIZE,MODEL,SERIAL,RO,TRAN | sed 's/[[:space:]]\+/ /g')"
+dialog_info "Диски компьютера:\n\n$candidates\n\nТвой целевой диск: отдельный NVMe 256 ГБ. На странице разметки выбери именно его, Btrfs и вариант стирания только этого диска. Диски с RO=1 защищены от записи."
+
+{
+    echo "ShadowOS installer started: $(date -u +%FT%TZ)"
+    echo "Protected Windows disks: ${protected[*]-none}"
+    lsblk -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MODEL,SERIAL,RO
+} > "$log"
+
+# Refresh only keyrings. Reinstalling Calamares here would overwrite the
+# ShadowOS-specific package selection and post-install jobs.
+{
+    sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring
+    sudo pacman-key --init
+    sudo pacman-key --populate archlinux cachyos
+} >>"$log" 2>&1
+sudo timedatectl set-ntp true || true
+
+sudo rsync -a /opt/shadowos/calamares/etc/ /etc/calamares/
+sudo install -Dm0644 /opt/shadowos/calamares/usr-share/settings_online.conf \
+    /usr/share/calamares/settings_online.conf
+sudo rsync -a /opt/shadowos/calamares/usr-share/shadowos/ \
+    /usr/share/calamares/branding/shadowos/
+sudo cp /usr/share/calamares/settings_online.conf /etc/calamares/settings.conf
+
+exec pkexec-wrapper calamares -D6 >>"$log" 2>&1

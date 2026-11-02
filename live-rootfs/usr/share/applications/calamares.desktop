@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install ShadowOS
+Name[ru]=Установить ShadowOS
+GenericName=System Installer
+GenericName[ru]=Установщик системы
+Comment=Install ShadowOS with Windows-disk protection
+Comment[ru]=Установка ShadowOS с защитой диска Windows
+Exec=/usr/local/bin/shadowos-installer
+Icon=calamares
+Terminal=false
+StartupNotify=true
+Categories=Qt;System;
+Keywords=installer;calamares;system;

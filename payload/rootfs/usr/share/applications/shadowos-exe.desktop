@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Run Windows application (isolated)
+Name[ru]=Запустить Windows-приложение изолированно
+Comment=Run an EXE or MSI in its own Wine prefix
+Comment[ru]=Запуск EXE или MSI в отдельном окружении Wine
+Exec=/usr/local/bin/shadowos-exe %f
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-msi;
+Icon=wine
+Terminal=false
+NoDisplay=true
+Categories=Utility;

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Shadow AI
+Name[ru]=Shadow AI
+Comment=Safe hybrid assistant for ShadowOS settings and diagnostics
+Comment[ru]=Безопасный гибридный помощник для настроек и диагностики ShadowOS
+Exec=kitty --class shadow-ai -e shadow-ai
+Icon=utilities-terminal
+Terminal=false
+Categories=System;Settings;

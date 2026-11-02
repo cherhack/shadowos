@@ -1,0 +1,19 @@
+# Availability varies between Arch/CachyOS repository snapshots.
+wine-mono
+wine-gecko
+lib32-gamemode
+lib32-mangohud
+gamescope
+goverlay
+protonup-qt
+protontricks
+proton-cachyos-slr
+proton-cachyos-native
+snapper
+snap-pac
+cmatrix
+peaclock
+peaclock-git
+overskride
+bibata-cursor-theme
+bibata-cursor-theme-bin

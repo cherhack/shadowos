@@ -1,0 +1,11 @@
+NAME="ShadowOS"
+PRETTY_NAME="ShadowOS 1.0 (based on CachyOS)"
+ID=cachyos
+ID_LIKE="arch"
+BUILD_ID=rolling
+ANSI_COLOR="38;2;166;166;166"
+HOME_URL="https://cachyos.org/"
+DOCUMENTATION_URL="https://wiki.cachyos.org/"
+SUPPORT_URL="https://discuss.cachyos.org/"
+BUG_REPORT_URL="https://github.com/CachyOS/CachyOS/issues"
+LOGO=shadowos
