@@ -24,10 +24,11 @@ def main() -> None:
     args = parser.parse_args()
     root = args.airootfs.resolve()
 
-    settings_path = require(root, "usr/share/calamares/settings_online.conf")
-    netinstall_path = require(root, "etc/calamares/modules/netinstall.yaml")
-    partition_path = require(root, "etc/calamares/modules/partition.conf")
-    branding_path = require(root, "usr/share/calamares/branding/shadowos/branding.desc")
+    staged = "opt/shadowos/calamares"
+    settings_path = require(root, f"{staged}/usr/share/calamares/settings_online.conf")
+    netinstall_path = require(root, f"{staged}/etc/calamares/modules/netinstall.yaml")
+    partition_path = require(root, f"{staged}/etc/calamares/modules/partition.conf")
+    branding_path = require(root, f"{staged}/usr/share/calamares/branding/shadowos/branding.desc")
     for path in (settings_path, netinstall_path, partition_path, branding_path):
         yaml.safe_load(path.read_text(encoding="utf-8"))
 
@@ -48,8 +49,8 @@ def main() -> None:
     assert "efiSystemPartitionSize: 1024M" in partition
 
     for relative in (
-        "etc/calamares/modules/shellprocess_shadowos_copy.conf",
-        "etc/calamares/modules/shellprocess_shadowos_setup.conf",
+        "opt/shadowos/calamares/etc/calamares/modules/shellprocess_shadowos_copy.conf",
+        "opt/shadowos/calamares/etc/calamares/modules/shellprocess_shadowos_setup.conf",
         "opt/shadowos/DarkShadowShell/install.sh",
         "opt/shadowos/payload/rootfs/usr/share/grub/themes/shadowos/theme.txt",
         "usr/share/grub/themes/shadowos/theme.txt",

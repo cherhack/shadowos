@@ -82,10 +82,10 @@ dialog_info "Диски компьютера:\n\n$candidates\n\nТвой цел�
 } >>"$log" 2>&1
 sudo timedatectl set-ntp true || true
 
-sudo rsync -a /opt/shadowos/calamares/etc/ /etc/calamares/
-sudo install -Dm0644 /opt/shadowos/calamares/usr-share/settings_online.conf \
+sudo rsync -a /opt/shadowos/calamares/etc/calamares/ /etc/calamares/
+sudo install -Dm0644 /opt/shadowos/calamares/usr/share/calamares/settings_online.conf \
     /usr/share/calamares/settings_online.conf
-sudo rsync -a /opt/shadowos/calamares/usr-share/shadowos/ \
+sudo rsync -a /opt/shadowos/calamares/usr/share/calamares/branding/shadowos/ \
     /usr/share/calamares/branding/shadowos/
 sudo cp /usr/share/calamares/settings_online.conf /etc/calamares/settings.conf
 

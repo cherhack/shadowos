@@ -44,7 +44,16 @@ cat "$live_resolved" >> "$package_list.tmp"
 LC_ALL=C sort -u "$package_list.tmp" > "$package_list"
 rm "$package_list.tmp"
 
-python "$project_root/scripts/patch-calamares.py" --airootfs "$airootfs" --packages "$resolved"
+calamares_root="$airootfs/opt/shadowos/calamares"
+python "$project_root/scripts/patch-calamares.py" --airootfs "$calamares_root" --packages "$resolved"
+cp -a "$project_root/calamares-overlay/." "$calamares_root/"
+
+# The ShadowOS branding uses a new component name and therefore does not
+# conflict with files owned by cachyos-calamares-next. Package-owned module
+# configs stay exclusively in the staged payload until the installer starts.
+mkdir -p "$airootfs/usr/share/calamares/branding"
+cp -a "$calamares_root/usr/share/calamares/branding/shadowos" \
+    "$airootfs/usr/share/calamares/branding/"
 
 cp -a "$project_root/payload/rootfs/." "$airootfs/"
 cp -a "$project_root/live-rootfs/." "$airootfs/"
@@ -63,15 +72,8 @@ cp -a "$airootfs/usr/share/grub/themes/shadowos" \
     "$airootfs/opt/shadowos/payload/rootfs/usr/share/grub/themes/"
 install -Dm0644 "$airootfs/usr/share/calamares/branding/shadowos/icon.png" \
     "$airootfs/opt/shadowos/payload/rootfs/usr/share/pixmaps/shadowos.png"
-
-# Keep an immutable copy of the installer configuration. The launcher restores
-# it immediately before Calamares starts, so a keyring refresh cannot replace it.
-mkdir -p "$airootfs/opt/shadowos/calamares/etc" "$airootfs/opt/shadowos/calamares/usr-share"
-cp -a "$airootfs/etc/calamares/." "$airootfs/opt/shadowos/calamares/etc/"
-cp -a "$airootfs/usr/share/calamares/settings_online.conf" \
-    "$airootfs/opt/shadowos/calamares/usr-share/settings_online.conf"
-cp -a "$airootfs/usr/share/calamares/branding/shadowos" \
-    "$airootfs/opt/shadowos/calamares/usr-share/"
+cp -a "$airootfs/usr/share/calamares/branding/shadowos/." \
+    "$calamares_root/usr/share/calamares/branding/shadowos/"
 
 # Enable the live preparation service and SDDM while preserving real symlinks.
 mkdir -p "$airootfs/etc/systemd/system/graphical.target.wants"
